@@ -1,0 +1,236 @@
+.my-orders-page {
+  min-height: 100vh;
+  background: var(--bg-primary);
+  padding-bottom: 40px;
+}
+
+.my-orders-content {
+  max-width: 600px;
+  margin: 0 auto;
+  padding: 12px 12px 32px;
+}
+
+/* ── Count ── */
+.mo-count {
+  font-size: 13px;
+  color: var(--text-muted);
+  font-weight: 500;
+  padding: 0 4px 10px;
+}
+
+/* ── List ── */
+.mo-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* ── Card ── */
+.mo-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+  cursor: pointer;
+  animation: slideUp 0.4s ease-out both;
+  transition: box-shadow 0.2s, transform 0.15s;
+}
+
+.mo-card:active {
+  transform: scale(0.985);
+}
+
+.mo-card:hover {
+  box-shadow: var(--shadow-md);
+}
+
+/* ── Card header ── */
+.mo-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  gap: 10px;
+}
+
+.mo-card-left {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mo-order-num {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--text-primary);
+  letter-spacing: 0.3px;
+}
+
+.mo-date {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* ── Status badge ── */
+.mo-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 11px;
+  border-radius: 30px;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* ── Items preview ── */
+.mo-items-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-bottom: 4px;
+}
+
+.mo-item-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.mo-item-name {
+  flex: 1;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mo-item-qty {
+  color: var(--text-muted);
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.mo-item-price {
+  font-weight: 600;
+  color: var(--accent-gold);
+  flex-shrink: 0;
+}
+
+.mo-more {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-style: italic;
+  padding-top: 2px;
+}
+
+/* ── Expanded details ── */
+.mo-details {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mo-detail-row {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+}
+
+.mo-detail-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  min-width: 90px;
+  flex-shrink: 0;
+}
+
+.mo-detail-value {
+  font-size: 13px;
+  color: var(--text-secondary);
+  font-weight: 500;
+  word-break: break-word;
+}
+
+/* ── Card footer ── */
+.mo-card-footer {
+  display: flex;
+  align-items: center;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-color);
+}
+
+.mo-total-label {
+  flex: 1;
+  font-size: 13px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.mo-total-price {
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--accent-gold);
+  margin-right: 10px;
+}
+
+.mo-chevron {
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  transition: transform 0.25s ease;
+}
+
+.mo-chevron.open {
+  transform: rotate(180deg);
+}
+
+/* ── Empty ── */
+.mo-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  text-align: center;
+  gap: 12px;
+}
+
+.mo-empty-icon {
+  font-size: 64px;
+  opacity: 0.4;
+}
+
+.mo-empty h2 {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.mo-empty p {
+  font-size: 14px;
+  color: var(--text-muted);
+  max-width: 230px;
+}
+
+/* ── Error ── */
+.mo-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  text-align: center;
+  gap: 12px;
+}
+
+.mo-error-icon {
+  font-size: 48px;
+}
+
+.mo-error p {
+  font-size: 14px;
+  color: var(--text-muted);
+}

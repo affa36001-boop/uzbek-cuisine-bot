@@ -1,0 +1,27 @@
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Runtime
+node_modules/
+dist/
+.cache/
+
+# Database (важно! не заливать БД в git)
+*.sqlite
+*.sqlite3
+*.db
+
+# Environment (секреты НЕ в git!)
+.env
+.env.local
+.env.production
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
