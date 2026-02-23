@@ -20,16 +20,24 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: false,
-    // Разбиваем на чанки для быстрой загрузки
+    // Optimize chunk splitting for faster initial load
     rollupOptions: {
       output: {
         manualChunks: {
-          vendor: ['react', 'react-dom', 'react-router-dom'],
+          vendor: ['react', 'react-dom'],
+          router: ['react-router-dom'],
         }
       }
-    }
+    },
+    // Use esbuild (built-in, faster than terser)
+    minify: 'esbuild',
   },
 
-  // Базовый путь (оставить '/' для Vercel/Netlify)
+  // Remove console.log in production
+  esbuild: {
+    drop: ['console', 'debugger'],
+  },
+
+  // Base path (keep '/' for Vercel)
   base: '/',
 })

@@ -35,11 +35,14 @@ export default function Home() {
   const loadAllProducts = async () => {
     try {
       setLoading(true);
+      // Load ALL categories in parallel instead of sequentially
+      const responses = await Promise.all(
+        CATEGORIES.map(cat => productsAPI.getAll(cat.id))
+      );
       const results = {};
-      for (const cat of CATEGORIES) {
-        const response = await productsAPI.getAll(cat.id);
-        results[cat.id] = response?.products || [];
-      }
+      CATEGORIES.forEach((cat, i) => {
+        results[cat.id] = responses[i]?.products || [];
+      });
       setAllProducts(results);
       setError(null);
     } catch (err) {
