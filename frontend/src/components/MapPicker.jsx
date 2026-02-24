@@ -1,68 +1,184 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
 export default function MapPicker({ isOpen, onClose, onConfirm, initialLat, initialLng, initialAddress }) {
-  const [position, setPosition] = useState({ lat: initialLat || 41.2995, lng: initialLng || 69.2401 });
+  const [position, setPosition] = useState({ 
+    lat: initialLat || 41.2995, 
+    lng: initialLng || 69.2401 
+  });
   const [address, setAddress] = useState(initialAddress || '');
   const mapRef = useRef(null);
   const mapInstance = useRef(null);
   const markerRef = useRef(null);
-  const token = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN;
 
-  const reverseGeocode = useCallback(async (lat, lng) => {
-    if (!token) return;
+  // Обратное геокодирование через Nominatim (бесплатно)
+  const reverseGeocode = async (lat, lng) => {
     try {
-      const res = await fetch(`https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?access_token=${token}&language=ru`);
+      const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1&accept-language=ru`);
       const data = await res.json();
-      if (data.features?.length) setAddress(data.features[0].place_name);
-    } catch {}
-  }, [token]);
+      if (data && data.display_name) {
+        setAddress(data.display_name);
+      }
+    } catch (err) {
+      console.error('Geocoding error:', err);
+    }
+  };
 
   useEffect(() => {
-    if (!isOpen || !mapRef.current || !token || mapInstance.current) return;
-    const loadMapbox = async () => {
-      if (!window.mapboxgl) {
-        const link = document.createElement('link');
-        link.rel = 'stylesheet';
-        link.href = 'https://api.mapbox.com/mapbox-gl-js/v3.0.1/mapbox-gl.css';
-        document.head.appendChild(link);
-        const script = document.createElement('script');
-        script.src = 'https://api.mapbox.com/mapbox-gl-js/v3.0.1/mapbox-gl.js';
-        script.onload = () => initMap();
-        document.head.appendChild(script);
-      } else initMap();
-    };
+    if (!isOpen) {
+      if (mapInstance.current) {
+        mapInstance.current.remove();
+        mapInstance.current = null;
+      }
+      return;
+    }
+
     const initMap = () => {
-      window.mapboxgl.accessToken = token;
-      const map = new window.mapboxgl.Map({ container: mapRef.current, style: 'mapbox://styles/mapbox/light-v11', center: [position.lng, position.lat], zoom: 14 });
-      const marker = new window.mapboxgl.Marker({ draggable: true, color: '#C8961E' }).setLngLat([position.lng, position.lat]).addTo(map);
+      if (!mapRef.current || mapInstance.current || !window.L) return;
+
+      // Инициализация карты Leaflet
+      const map = window.L.map(mapRef.current).setView([position.lat, position.lng], 14);
+      
+      // Добавляем слой карты (OpenStreetMap)
+      window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap'
+      }).addTo(map);
+
+      // Добавляем маркер
+      const marker = window.L.marker([position.lat, position.lng], {
+        draggable: true
+      }).addTo(map);
+
       marker.on('dragend', () => {
-        const lngLat = marker.getLngLat();
-        setPosition({ lat: lngLat.lat, lng: lngLat.lng });
-        reverseGeocode(lngLat.lat, lngLat.lng);
+        const { lat, lng } = marker.getLatLng();
+        setPosition({ lat, lng });
+        reverseGeocode(lat, lng);
       });
+
       map.on('click', (e) => {
-        marker.setLngLat(e.lngLat);
-        setPosition({ lat: e.lngLat.lat, lng: e.lngLat.lng });
-        reverseGeocode(e.lngLat.lat, e.lngLat.lng);
+        const { lat, lng } = e.latlng;
+        marker.setLatLng([lat, lng]);
+        setPosition({ lat, lng });
+        reverseGeocode(lat, lng);
       });
+
       mapInstance.current = map;
       markerRef.current = marker;
-      reverseGeocode(position.lat, position.lng);
+
+      // Форсируем обновление размера для корректного отображения
+      setTimeout(() => map.invalidateSize(), 200);
+      
+      if (!address) reverseGeocode(position.lat, position.lng);
     };
-    loadMapbox();
-    return () => { if (mapInstance.current) { mapInstance.current.remove(); mapInstance.current = null; } };
-  }, [isOpen, token]);
+
+    // Загрузка Leaflet стилей и скриптов, если их еще нет
+    if (window.L) {
+      initMap();
+    } else {
+      if (!document.getElementById('leaflet-css')) {
+        const link = document.createElement('link');
+        link.id = 'leaflet-css';
+        link.rel = 'stylesheet';
+        link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+        document.head.appendChild(link);
+      }
+
+      if (!document.getElementById('leaflet-js')) {
+        const script = document.createElement('script');
+        script.id = 'leaflet-js';
+        script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+        script.onload = initMap;
+        document.head.appendChild(script);
+      } else {
+        const checkL = setInterval(() => {
+          if (window.L) {
+            clearInterval(checkL);
+            initMap();
+          }
+        }, 100);
+      }
+    }
+
+    return () => {
+      if (mapInstance.current) {
+        mapInstance.current.remove();
+        mapInstance.current = null;
+      }
+    };
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'var(--bg-primary)', display: 'flex', flexDirection: 'column' }}>
-      <div style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(242,242,242,0.95)' }}>
-        <button onClick={onClose} style={{ color: 'var(--text-secondary)', background: 'none', border: 'none', fontSize: '15px' }}>✕ Закрыть</button>
-        <button onClick={() => { onConfirm(position.lat, position.lng, address); onClose(); }} style={{ background: 'var(--accent-gold)', color: '#0D0D0D', border: 'none', borderRadius: '10px', padding: '8px 16px', fontWeight: 600, fontSize: '14px' }}>Подтвердить</button>
+    <div style={{ 
+      position: 'fixed', 
+      inset: 0, 
+      zIndex: 2000, 
+      background: '#fff', 
+      display: 'flex', 
+      flexDirection: 'column',
+      fontFamily: 'sans-serif' 
+    }}>
+      {/* Шапка */}
+      <div style={{ 
+        padding: '14px 16px', 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'space-between', 
+        background: '#f8f8f8',
+        borderBottom: '1px solid #ddd',
+        boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
+      }}>
+        <button 
+          onClick={onClose} 
+          style={{ 
+            color: '#666', 
+            background: 'none', 
+            border: 'none', 
+            fontSize: '16px',
+            padding: '8px' 
+          }}
+        >
+          ✕ Закрыть
+        </button>
+        <button 
+          onClick={() => { onConfirm(position.lat, position.lng, address); onClose(); }} 
+          style={{ 
+            background: '#C8961E', 
+            color: '#fff', 
+            border: 'none', 
+            borderRadius: '8px', 
+            padding: '10px 20px', 
+            fontWeight: '600', 
+            fontSize: '14px' 
+          }}
+        >
+          Подтвердить
+        </button>
       </div>
-      <div ref={mapRef} style={{ flex: 1 }} />
-      {address && <div style={{ padding: '12px 16px', background: 'var(--bg-card)', borderTop: '1px solid var(--border-color)', fontSize: '13px', color: 'var(--text-secondary)' }}>📍 {address}</div>}
+
+      {/* Контейнер карты */}
+      <div ref={mapRef} style={{ flex: 1, width: '100%', height: '100%' }} />
+
+      {/* Адрес снизу */}
+      {address && (
+        <div style={{ 
+          padding: '16px', 
+          background: '#fff', 
+          borderTop: '1px solid #eee', 
+          fontSize: '14px', 
+          color: '#333',
+          lineHeight: '1.4'
+        }}>
+          📍 <strong>Ваш адрес:</strong><br/>
+          {address}
+        </div>
+      )}
+
+      {/* Кастомные стили для Leaflet чтобы маркер был виден корректно */}
+      <style>{`
+        .leaflet-container { height: 100%; width: 100%; }
+        .leaflet-marker-icon { filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3)); }
+      `}</style>
     </div>
   );
 }
