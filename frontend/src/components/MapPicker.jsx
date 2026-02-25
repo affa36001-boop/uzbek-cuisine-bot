@@ -3,15 +3,13 @@ import React, { useState, useEffect, useRef } from 'react';
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN;
 
 export default function MapPicker({ isOpen, onClose, onConfirm, initialLat, initialLng, initialAddress }) {
-  const [position, setPosition] = useState({
-    lat: initialLat || 41.2995,
-    lng: initialLng || 69.2401
-  });
+  const [position, setPosition] = useState(null); // null = точка не выбрана
   const [address, setAddress] = useState(initialAddress || '');
-  const [mapLoaded, setMapLoaded] = useState(false);
+  const [markerVisible, setMarkerVisible] = useState(false); // маркер доставки виден только после нажатия
   const mapContainerRef = useRef(null);
   const mapInstance = useRef(null);
-  const markerRef = useRef(null);
+  const deliveryMarkerRef = useRef(null);
+  const geolocateRef = useRef(null);
 
   // Обратное геокодирование через Mapbox API
   const reverseGeocode = async (lat, lng) => {
@@ -30,12 +28,8 @@ export default function MapPicker({ isOpen, onClose, onConfirm, initialLat, init
 
   const loadMapboxScript = () => {
     return new Promise((resolve) => {
-      if (window.mapboxgl) {
-        resolve();
-        return;
-      }
+      if (window.mapboxgl) { resolve(); return; }
 
-      // CSS
       if (!document.getElementById('mapbox-css')) {
         const link = document.createElement('link');
         link.id = 'mapbox-css';
@@ -44,7 +38,6 @@ export default function MapPicker({ isOpen, onClose, onConfirm, initialLat, init
         document.head.appendChild(link);
       }
 
-      // JS
       if (!document.getElementById('mapbox-js')) {
         const script = document.createElement('script');
         script.id = 'mapbox-js';
@@ -53,15 +46,39 @@ export default function MapPicker({ isOpen, onClose, onConfirm, initialLat, init
         script.onerror = () => console.error('Failed to load Mapbox GL JS');
         document.head.appendChild(script);
       } else {
-        // Script tag exists but mapboxgl might not be ready yet
         const check = setInterval(() => {
-          if (window.mapboxgl) {
-            clearInterval(check);
-            resolve();
-          }
+          if (window.mapboxgl) { clearInterval(check); resolve(); }
         }, 100);
       }
     });
+  };
+
+  // Создаём кастомный элемент маркера доставки (золотая булавка со стрелкой вниз)
+  const createDeliveryMarkerEl = () => {
+    const wrapper = document.createElement('div');
+    wrapper.style.cssText = `
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      cursor: grab;
+      filter: drop-shadow(0 3px 6px rgba(0,0,0,0.4));
+      animation: markerDrop 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    `;
+
+    // Иконка машины/стрелки доставки
+    const pin = document.createElement('div');
+    pin.innerHTML = `
+      <svg width="44" height="54" viewBox="0 0 44 54" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <!-- Тень -->
+        <ellipse cx="22" cy="52" rx="8" ry="3" fill="rgba(0,0,0,0.18)"/>
+        <!-- Булавка -->
+        <path d="M22 2C13.163 2 6 9.163 6 18C6 30 22 50 22 50C22 50 38 30 38 18C38 9.163 30.837 2 22 2Z" fill="#C8961E" stroke="#fff" stroke-width="2.5"/>
+        <!-- Иконка грузовика доставки внутри -->
+        <text x="22" y="23" text-anchor="middle" font-size="14" fill="white">🚗</text>
+      </svg>
+    `;
+    wrapper.appendChild(pin);
+    return wrapper;
   };
 
   useEffect(() => {
@@ -69,82 +86,98 @@ export default function MapPicker({ isOpen, onClose, onConfirm, initialLat, init
       if (mapInstance.current) {
         mapInstance.current.remove();
         mapInstance.current = null;
-        markerRef.current = null;
+        deliveryMarkerRef.current = null;
+        geolocateRef.current = null;
       }
-      setMapLoaded(false);
+      setMarkerVisible(false);
+      setPosition(null);
+      setAddress(initialAddress || '');
       return;
     }
 
     const initMap = async () => {
       await loadMapboxScript();
-
       if (!mapContainerRef.current || mapInstance.current) return;
 
       window.mapboxgl.accessToken = MAPBOX_TOKEN;
 
+      // Начальный центр — Ташкент (если нет initialLat/Lng)
+      const initCenter = (initialLng && initialLat)
+        ? [initialLng, initialLat]
+        : [69.2401, 41.2995];
+
       const map = new window.mapboxgl.Map({
         container: mapContainerRef.current,
         style: 'mapbox://styles/mapbox/streets-v12',
-        center: [position.lng, position.lat],
-        zoom: 14,
+        center: initCenter,
+        zoom: 13,
         language: 'ru',
       });
 
-      // Добавляем маркер (перетаскиваемый)
-      const el = document.createElement('div');
-      el.style.cssText = `
-        width: 36px;
-        height: 36px;
-        border-radius: 50% 50% 50% 0;
-        background: #C8961E;
-        transform: rotate(-45deg);
-        border: 3px solid #fff;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.35);
-        cursor: grab;
-      `;
-
-      const marker = new window.mapboxgl.Marker({
-        element: el,
-        draggable: true,
-        anchor: 'bottom',
-      })
-        .setLngLat([position.lng, position.lat])
-        .addTo(map);
-
-      marker.on('dragend', () => {
-        const { lng, lat } = marker.getLngLat();
-        setPosition({ lat, lng });
-        reverseGeocode(lat, lng);
+      // ── Кнопка геолокации (автоматически срабатывает при загрузке) ──
+      const geolocate = new window.mapboxgl.GeolocateControl({
+        positionOptions: { enableHighAccuracy: true },
+        trackUserLocation: true,      // синий кружок следит за тобой
+        showUserHeading: true,         // стрелка направления
+        showAccuracyCircle: true,      // полупрозрачный круг точности
       });
 
-      map.on('click', (e) => {
-        const { lng, lat } = e.lngLat;
-        marker.setLngLat([lng, lat]);
-        setPosition({ lat, lng });
-        reverseGeocode(lat, lng);
-      });
-
-      // Навигационные кнопки +/-
+      map.addControl(geolocate, 'top-right');
       map.addControl(new window.mapboxgl.NavigationControl(), 'top-right');
 
-      // Кнопка определения местоположения
-      map.addControl(
-        new window.mapboxgl.GeolocateControl({
-          positionOptions: { enableHighAccuracy: true },
-          trackUserLocation: false,
-          showUserHeading: false,
-        }),
-        'top-right'
-      );
+      geolocateRef.current = geolocate;
 
+      // Автоматически запускаем геолокацию после загрузки карты
       map.on('load', () => {
-        setMapLoaded(true);
+        geolocate.trigger(); // запрашивает разрешение и показывает синий кружок
+      });
+
+      // ── Маркер доставки (появляется только после нажатия) ──
+      const deliveryEl = createDeliveryMarkerEl();
+
+      const deliveryMarker = new window.mapboxgl.Marker({
+        element: deliveryEl,
+        draggable: true,
+        anchor: 'bottom',
+      });
+      // Пока НЕ добавляем на карту — только после клика
+
+      // При клике на карту — ставим/перемещаем маркер доставки
+      map.on('click', (e) => {
+        const { lng, lat } = e.lngLat;
+        setPosition({ lat, lng });
+        setMarkerVisible(true);
+
+        if (!deliveryMarker._map) {
+          // Первый раз — добавляем на карту
+          deliveryMarker.setLngLat([lng, lat]).addTo(map);
+        } else {
+          deliveryMarker.setLngLat([lng, lat]);
+        }
+
+        reverseGeocode(lat, lng);
+      });
+
+      // При перетаскивании маркера
+      deliveryMarker.on('dragend', () => {
+        const { lng, lat } = deliveryMarker.getLngLat();
+        setPosition({ lat, lng });
+        reverseGeocode(lat, lng);
       });
 
       mapInstance.current = map;
-      markerRef.current = marker;
+      deliveryMarkerRef.current = deliveryMarker;
 
-      if (!address) reverseGeocode(position.lat, position.lng);
+      // Если была ранее выбранная точка — показываем сразу
+      if (initialLat && initialLng) {
+        setTimeout(() => {
+          deliveryMarker.setLngLat([initialLng, initialLat]).addTo(map);
+          setPosition({ lat: initialLat, lng: initialLng });
+          setMarkerVisible(true);
+          if (initialAddress) setAddress(initialAddress);
+          else reverseGeocode(initialLat, initialLng);
+        }, 500);
+      }
     };
 
     initMap();
@@ -153,12 +186,15 @@ export default function MapPicker({ isOpen, onClose, onConfirm, initialLat, init
       if (mapInstance.current) {
         mapInstance.current.remove();
         mapInstance.current = null;
-        markerRef.current = null;
+        deliveryMarkerRef.current = null;
+        geolocateRef.current = null;
       }
     };
   }, [isOpen]);
 
   if (!isOpen) return null;
+
+  const canConfirm = position !== null;
 
   return (
     <div style={{
@@ -195,19 +231,25 @@ export default function MapPicker({ isOpen, onClose, onConfirm, initialLat, init
           ✕ Закрыть
         </button>
         <span style={{ fontWeight: '600', fontSize: '15px', color: '#333' }}>
-          Выберите адрес
+          📦 Точка доставки
         </span>
         <button
-          onClick={() => { onConfirm(position.lat, position.lng, address); onClose(); }}
+          onClick={() => {
+            if (canConfirm) {
+              onConfirm(position.lat, position.lng, address);
+              onClose();
+            }
+          }}
           style={{
-            background: '#C8961E',
+            background: canConfirm ? '#C8961E' : '#ccc',
             color: '#fff',
             border: 'none',
             borderRadius: '8px',
             padding: '10px 20px',
             fontWeight: '600',
             fontSize: '14px',
-            cursor: 'pointer'
+            cursor: canConfirm ? 'pointer' : 'not-allowed',
+            transition: 'background 0.2s'
           }}
         >
           Подтвердить
@@ -221,9 +263,16 @@ export default function MapPicker({ isOpen, onClose, onConfirm, initialLat, init
         borderBottom: '1px solid #f0e0b0',
         fontSize: '13px',
         color: '#8a6d00',
-        flexShrink: 0
+        flexShrink: 0,
+        display: 'flex',
+        alignItems: 'center',
+        gap: '6px'
       }}>
-        📍 Нажмите на карту или перетащите метку для выбора точки доставки
+        {!markerVisible ? (
+          <>🗺️ <span>Нажмите на карту, чтобы указать точку доставки</span></>
+        ) : (
+          <>✅ <span>Точка выбрана — перетащите метку для уточнения</span></>
+        )}
       </div>
 
       {/* Контейнер карты */}
@@ -233,24 +282,40 @@ export default function MapPicker({ isOpen, onClose, onConfirm, initialLat, init
       />
 
       {/* Адрес снизу */}
-      {address && (
+      {address && markerVisible && (
         <div style={{
           padding: '14px 16px',
           background: '#fff',
-          borderTop: '1px solid #eee',
+          borderTop: '2px solid #C8961E',
           fontSize: '14px',
           color: '#333',
           lineHeight: '1.4',
           flexShrink: 0
         }}>
-          📍 <strong>Ваш адрес:</strong><br />
-          {address}
+          🚗 <strong>Доставить сюда:</strong><br />
+          <span style={{ color: '#555' }}>{address}</span>
         </div>
       )}
 
       <style>{`
         .mapboxgl-canvas { width: 100% !important; height: 100% !important; }
         .mapboxgl-ctrl-group button { background-color: #fff; }
+        .mapboxgl-user-location-dot {
+          background-color: #1a73e8 !important;
+          box-shadow: 0 0 0 3px rgba(26,115,232,0.3) !important;
+        }
+        @keyframes markerDrop {
+          0%   { transform: translateY(-20px) scale(0.8); opacity: 0; }
+          100% { transform: translateY(0) scale(1); opacity: 1; }
+        }
+        @keyframes pulse {
+          0%   { box-shadow: 0 0 0 0 rgba(26,115,232,0.5); }
+          70%  { box-shadow: 0 0 0 12px rgba(26,115,232,0); }
+          100% { box-shadow: 0 0 0 0 rgba(26,115,232,0); }
+        }
+        .mapboxgl-user-location-dot {
+          animation: pulse 2s infinite !important;
+        }
       `}</style>
     </div>
   );
